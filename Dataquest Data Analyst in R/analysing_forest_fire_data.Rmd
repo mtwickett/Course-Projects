@@ -1,0 +1,306 @@
+---
+title: "Guided Project: Analysing Forest Fire Data"
+output: github_document
+---
+
+```{r include=FALSE}
+library("tidyverse")
+library("sqldf")
+library("knitr")
+library("rmarkdown")
+library("lubridate")
+```
+
+```{r}
+# read in data csv file
+df <- read.csv("C:/Users/Martin/Desktop/Datasets/forestfires.csv")
+head(df)
+```
+
+```{r}
+# check rows and columns
+glimpse(df)
+```
+Each row represents the location, day, and month of the following variables during a forest fire.
+
+**`FFMC`** - The Fine Fuel Moisture Code which represents the fuel moisture of forest litter fuels under the shade of the forest canopy.
+
+**`DMC`** - The Duff Moisture Code. The average moisture content of loosely compacted organic layers of moderate depth.
+
+**`DC`** - The Drought Code. The average moisture content of deep, compact organic layers.
+
+**`ISI`** - The Initial Spread Index. The expected rate of fire spread.
+
+**`RH`** - Relative Humidity. How much water vapor is in the air, compared to how much there could be.
+
+**`Temp`** - Temperature in Celsius Degrees
+
+**`Wind`** - Wind speed in km/h
+
+**`Rain`** - Outside Rain in mm/m2
+
+**`Area`** - The burned area of the forest in hectares.
+
+## Categorize The Month And Day Columns In Order
+
+```{r}
+# check unique month values
+df %>% pull(month) %>% unique
+```
+
+```{r}
+# check unique day values
+df %>% pull(day) %>% unique
+```
+
+```{r}
+# order month and day values and create factors
+month_order <- c('jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec')
+
+day_order <- c('mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun')
+
+df <- df %>% mutate(
+  month = factor(month, levels = month_order),
+  day = factor(day, levels = day_order)
+)
+```
+
+## What Months Do Fires Occur Most?
+
+```{r}
+# create dataframe grouped by month, then count number of fires (rows)
+fires_per_month <- df %>% group_by(month) %>%
+  summarize(total_fires = n())
+
+# create column graph for the number of fires per month
+fires_per_month %>%
+  ggplot(aes(x = month, y = total_fires, fill = month)) +
+  geom_col() +
+  geom_text(aes(label = total_fires), vjust = -0.2) +
+  labs(
+    title = 'Number Of Forest Fires Per Month',
+    x = 'Month',
+    y = 'Number of Fires'
+  ) +
+  theme(legend.position='none', plot.title=element_text(hjust=0.5))
+```
+
+August and September stand out as having the most forest fires. January, May, and November have the least forest fires.
+
+## What Week Days Do Forest Fires Occur The Most?
+
+```{r}
+# create dataframe grouped by day, then count number of fires (rows)
+fires_per_day <- df %>% group_by(day) %>%
+  summarise(total_fires = n())
+
+# create column graph for the number of fires per week day
+fires_per_day %>%
+  ggplot(aes(x = day, y = total_fires, fill = day)) +
+  geom_col() +
+  geom_text(aes(label = total_fires), vjust = 1.2) +
+  labs(
+    title = 'Number Of Forest Fires Per Week day',
+    x = 'Day',
+    y = 'Number of Fires'
+  ) +
+  theme(legend.position='none', plot.title=element_text(hjust=0.5))
+```
+
+The data shows Sunday has the most forest fires and Wednesday has the least. Friday, Saturday, and Sunday have more than the other weekdays.
+
+## Check How Data Variables Relate To Month And Day
+
+Variables;
+
+* FFMC
+* DMC
+* DC
+* ISI
+* temp
+* RH
+* wind
+* rain
+
+
+```{r}
+# create a dataframe in long format
+df_long <- df %>% pivot_longer(
+  cols = c(FFMC, DMC, DC, ISI, temp, RH, wind, rain),
+  names_to = 'variable',
+  values_to = 'value'
+)
+head(df_long, 10)
+```
+
+
+```{r fig.height = 7, fig.width = 11}
+# create column graphs for each variable value by month
+df_long %>%
+  ggplot(aes(x = month, y = value, fill = month)) +
+  geom_col() +
+  facet_wrap(vars(variable), scales = 'free') +
+  labs(
+    title = 'Variable Changes By Month',
+    x = 'Month',
+    y = 'Variable'
+  ) +
+  theme(legend.position='none', plot.title=element_text(hjust=0.5))
+```
+
+All variables show increased values during August and September (except rain during September). No variable stands out over the others during August and September.
+
+```{r}
+# create column graphs for each variable value by week day
+df_long %>%
+  ggplot(aes(x = day, y = value, fill = day)) +
+  geom_col() +
+  facet_wrap(vars(variable), scales = 'free') +
+  labs(
+    title = 'Variable Changes By Day',
+    x = 'Day',
+    y = 'Variable'
+  ) +
+  theme(legend.position='none', plot.title=element_text(hjust=0.5))
+```
+
+Again, all variables show increased values on Friday, Saturday, and Sunday when forest fires are most prevalent, except for rain.
+
+## Check If The Variables Affect Area
+
+Assume that Area can be used to describe the severity or intensity of the fire.
+
+```{r}
+# create column graphs for how area is affected by the variable values
+df_long %>%
+  ggplot(aes(x = value, y = area)) +
+  geom_point() +
+  geom_smooth(method = 'lm') +
+  facet_wrap(vars(variable), scales = 'free') +
+  labs(
+    title = 'Affect of Variables on Fire Area (hectares)',
+    x = 'Variable',
+    y = 'Area'
+  ) + 
+  theme(legend.position='none', plot.title=element_text(hjust=0.5))
+  
+```
+There is no correlation between the variables and area.
+
+## Check For Outliers in Area
+
+```{r}
+# create a histogram for the area column
+df %>% 
+  ggplot(aes(x = area)) +
+  geom_histogram()
+```
+
+```{r}
+# create a boxplot for the area column
+df %>%
+  ggplot(aes(x=area)) +
+  geom_boxplot(outlier.color = 'Red')
+```
+
+
+```{r}
+# the five number summary
+fivenum(df$area)
+```
+```{r}
+# interquartile range
+iqr <- IQR(df$area)
+iqr
+```
+
+```{r}
+# high outliers 
+outliers <- 6.57 + (1.5 * iqr)
+outliers
+```
+```{r}
+# unique values in the area column
+df %>% pull(area) %>% unique
+```
+
+Most of the area values are zero or close to zero and a few are extremely large compared with the rest. Filtering by certain ranges of area may help to elucidate relationships.
+
+## Filter Area To Check For Variable Relationships
+
+1. Filter area less than or equal to 16.425 to remove outliers
+2. Filter area greater than 16.425 (only outliers)
+3. Filter area within the interquartile range
+
+```{r}
+# create a dataframe filtered by area values removing outliers (less than or equal to 16.425)
+df_long_remove_outliers <- df_long %>% 
+  filter(area <= outliers)
+
+# create a scatter plot showing the relationship between the variables and filtered area
+df_long_remove_outliers %>%
+  ggplot(aes(x = value, y = area)) +
+  geom_point() +
+  geom_smooth(method = 'lm') +
+  facet_wrap(vars(variable), scales = 'free') +
+  labs(
+    title = 'Affect of Variables on Fire Area (hectares) Outliers Removed',
+    x = 'Variable',
+    y = 'Area'
+  ) + 
+  theme(legend.position='none', plot.title=element_text(hjust=0.5))
+```
+Removing outliers shows no correlation between variables and area.
+
+
+```{r}
+# create a dataframe filtered by area values with only outliers (above 16.425)
+df_long_only_outliers <- df_long %>% 
+  filter(area > outliers)
+
+# create a scatter plot showing the relationship between the variables and filtered area
+df_long_only_outliers %>%
+  ggplot(aes(x = value, y = area)) +
+  geom_point() +
+  geom_smooth(method = 'lm') +
+  facet_wrap(vars(variable), scales = 'free') +
+  labs(
+    title = 'Affect of Variables on Fire Area (hectares) Only Outliers',
+    x = 'Variable',
+    y = 'Area'
+  ) + 
+  theme(legend.position='none', plot.title=element_text(hjust=0.5))
+```
+
+Data with only outliers shows no strong correlation between variables and area.
+
+
+```{r}
+# create a dataframe filtered by area values between the interquartile range
+df_long_between_iqr <- df_long %>% 
+  filter(area <= 6.57)
+
+# create a scatter plot showing the relationship between the variables and filtered area
+df_long_between_iqr %>%
+  ggplot(aes(x = value, y = area)) +
+  geom_point() +
+  geom_smooth(method = 'lm') +
+  facet_wrap(vars(variable), scales = 'free') +
+  labs(
+    title = 'Affect of Variables on Fire Area (hectares) Between IQR',
+    x = 'Variable',
+    y = 'Area'
+  ) + 
+  theme(legend.position='none', plot.title=element_text(hjust=0.5))
+```
+
+Data between the interquartile range shows no strong correlation between the variables and area.
+
+## Conclusion 
+
+* Rain has no relationship with the frequency of forest fires.
+* All other variables are increased when the frequency of fires increases. 
+* All variables show almost zero or very weak correlation with area. 
+* Therefore, the assumption that area may be used to describe the severity or intensity of forest fires is likely false. 
+
+
